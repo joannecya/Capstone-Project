@@ -26,6 +26,16 @@ def print_solution(data, manager, routing, solution):
     
     """Prints solution on console."""
     print(f'Objective: {solution.ObjectiveValue()}')
+
+    # Display dropped nodes.
+    dropped_nodes = 'Dropped nodes:'
+    for node in range(routing.Size()):
+        if routing.IsStart(node) or routing.IsEnd(node):
+            continue
+        if solution.Value(routing.NextVar(node)) == node:
+            dropped_nodes += ' {} (${})'.format(manager.IndexToNode(node), data['revenue_potential'][manager.IndexToNode(node)])
+    print(dropped_nodes + '\n')
+
     time_dimension = routing.GetDimensionOrDie('Time')
     total_time = 0
     total_load = 0
@@ -39,7 +49,7 @@ def print_solution(data, manager, routing, solution):
             node_index = manager.IndexToNode(index)
             route_load += data['demands'][node_index]
 
-            plan_output += '{0} Time({1},{2}) -> '.format(
+            plan_output += 'Location {0} Time({1},{2}) -> '.format(
                 manager.IndexToNode(index), solution.Min(time_var),
                 solution.Max(time_var))
             index = solution.Value(routing.NextVar(index))
@@ -52,13 +62,13 @@ def print_solution(data, manager, routing, solution):
         print(plan_output)
         total_time += solution.Min(time_var)
         total_load += route_load
-    print('Total time of all routes: {}min'.format(total_time))
+    print('Total time of all routes: {}mins'.format(total_time))
     print('Total load of all routes: {}'.format(total_load))
 
 
-def run_algorithm(time_matrix, time_window, revenues, num_vehicles):
+def run_algorithm(time_matrix, order_window, revenues, numPhleb):
     # Instantiate the data problem.
-    data = create_data_model(time_matrix, time_window, revenues, num_vehicles)
+    data = create_data_model(time_matrix, order_window, revenues, numPhleb)
 
     # Create the routing index manager.
     manager = pywrapcp.RoutingIndexManager(len(data['time_matrix']),
@@ -100,12 +110,17 @@ def run_algorithm(time_matrix, time_window, revenues, num_vehicles):
         True,  # start cumul to zero
         'Capacity')
 
+    # Allow to drop nodes.
+    for node in range(1, len(data['time_matrix'])):
+        penalty = data['revenue_potential'][manager.NodeToIndex(node)]
+        routing.AddDisjunction([manager.NodeToIndex(node)], penalty)
+
     # Add Time Windows constraint.
     time = 'Time'
     routing.AddDimension(
         transit_callback_index,
-        30,  # allow waiting time
-        30,  # maximum time per vehicle
+        60,  # allow waiting time
+        700,  # maximum time per vehicle
         False,  # Don't force start cumul to zero.
         time)
     time_dimension = routing.GetDimensionOrDie(time)
@@ -142,3 +157,5 @@ def run_algorithm(time_matrix, time_window, revenues, num_vehicles):
     # Print solution on console.
     if solution:
         print_solution(data, manager, routing, solution)
+    else:
+        print('No Solution')
