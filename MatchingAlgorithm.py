@@ -3,19 +3,33 @@ from ortools.constraint_solver import pywrapcp
 
 
 def create_data_model(time_matrix, time_window, revenues, num_vehicles):
-    """Stores the data for the problem."""
+    """
+    Purpose of this function is to store the data for the problem.
+
+    time_matrix: A 2-d Array of Travel times between locations. Format is specified in Feature Engineering.py file
+
+    time_window: An array of time window tuples for each locations, requested times for the visit that MUST be fulfilled.
+                Format = [(X, X+60) ... (N, N+60)]
+                Note that at Index 0, it is the ending/pickup location, time window is set to the Break Time
+                and for Index 1 to  M (where M is the number of Phlebotomists), those are phlebotomists' starting locations
+                therefore time windows are set based on their starting time
+    
+    revenues: A 1-d Array of revenues of each orders/order locations
+            Format = [1 ... N]
+            Note that at Index 0, it is the ending/pickup location, revenue is set arbitrarily at $1 
+            and for Index 1 to  M (where M is the number of Phlebotomists), those are phlebotomists' starting locations
+            revenue is also set arbitrarily at $1. However, those values are trivial and will not affect the algorithm
+    
+    num_vehicles: A single digit for the number of Phlebotomists available for allocation
+    """
+
     data = {}
 
-    # Travel times between locations; calculated as (1)Time to Travel + (2) Servicing Time + (3) Buffer Time; 
-    # each will manipulable variable during Pipeline design for Feature Engineering
     data['time_matrix'] = time_matrix
-
-    # An array of time windows for the locations, requested times for the visit that MUST be fulfilled.
     data['time_windows'] = time_window
-
     data['revenue_potential'] = revenues
-
     data['num_vehicles'] = num_vehicles
+
     data['starts'] = [i for i in range(1, num_vehicles+1)] #start locations
     data['ends'] = [0 for _ in range(num_vehicles)] #end location
     data['demands'] = [1 if _ > num_vehicles else 0 for _ in range(1, len(time_matrix) + 1)] 
