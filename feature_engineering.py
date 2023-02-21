@@ -15,11 +15,10 @@ def create_time_matrix(data):
     addresses = data["addresses"]
     API_key = data["API_key"]
     # Distance Matrix API only accepts 100 elements per request, so get rows in multiple requests.
-    max_elements = 100
-    num_addresses = len(addresses)  # 26 in this example.
-    # Maximum number of rows that can be computed per request (3 in this example).
-    max_rows = max_elements // num_addresses
-    # num_addresses = q * max_rows + r (q = 8 and r = 2 in this example).
+    # Maximum number of rows that can be computed per request (9 * 9 = 81).
+    max_rows = 9
+    num_addresses = len(addresses)  
+    # num_addresses = q * max_rows + r 
     q, r = divmod(num_addresses, max_rows)
     dest_addresses = addresses
     time_matrix = []
