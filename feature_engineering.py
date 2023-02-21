@@ -50,6 +50,11 @@ def create_time_matrix(data):
             else:
                 for numRow  in range(len(row_time_matrix)):
                     row_time_matrix[numRow] += build_time_matrix(response)[numRow]
+        if r > 0:
+            dest_addresses_r = addresses[(q * max_rows): (q * max_rows) + r]
+            response = send_request(origin_addresses, dest_addresses_r, API_key)
+            for numRow  in range(len(row_time_matrix)):
+                    row_time_matrix[numRow] += build_time_matrix(response)[numRow]
 
         time_matrix += row_time_matrix
 
@@ -58,13 +63,19 @@ def create_time_matrix(data):
         row_time_matrix = []
         origin_addresses = addresses[q * max_rows: q * max_rows + r]
         for j in range(q):
-            dest_addresses = addresses[(q * max_rows) + (r * j): q * max_rows + (r * (j + 1))]
+            dest_addresses = dest_addresses = addresses[j * max_rows: (j + 1) * max_rows]
             response = send_request(origin_addresses, dest_addresses, API_key)
             if len(row_time_matrix) == 0:
                 row_time_matrix += build_time_matrix(response)
             else:
                 for numRow  in range(len(row_time_matrix)):
                     row_time_matrix[numRow] += build_time_matrix(response)[numRow]
+        
+        dest_addresses_r = addresses[(q * max_rows): (q * max_rows) + r]
+        response = send_request(origin_addresses, dest_addresses_r, API_key)
+        for numRow  in range(len(row_time_matrix)):
+                    row_time_matrix[numRow] += build_time_matrix(response)[numRow]
+
         time_matrix += row_time_matrix
         
     return time_matrix
