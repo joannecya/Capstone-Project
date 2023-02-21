@@ -4,27 +4,11 @@ import urllib
 import urllib.request
 
 
-def create_data():
+def create_data(addresses):
   """Creates the data."""
   data = {}
   data['API_key'] = ''
-  data['addresses'] = ['3610+Hacks+Cross+Rd+Memphis+TN', # depot
-                       '1921+Elvis+Presley+Blvd+Memphis+TN',
-                       '149+Union+Avenue+Memphis+TN',
-                       '1034+Audubon+Drive+Memphis+TN',
-                       '1532+Madison+Ave+Memphis+TN',
-                       '706+Union+Ave+Memphis+TN',
-                       '3641+Central+Ave+Memphis+TN',
-                       '926+E+McLemore+Ave+Memphis+TN',
-                       '4339+Park+Ave+Memphis+TN',
-                       '600+Goodwyn+St+Memphis+TN',
-                       '2000+North+Pkwy+Memphis+TN',
-                       '262+Danny+Thomas+Pl+Memphis+TN',
-                       '125+N+Front+St+Memphis+TN',
-                       '5959+Park+Ave+Memphis+TN',
-                       '814+Scott+St+Memphis+TN',
-                       '1005+Tillman+St+Memphis+TN'
-                      ]
+  data['addresses'] = addresses
   return data
 
 def create_time_matrix(data):
@@ -105,14 +89,13 @@ def build_time_matrix(response):
 ########
 # Main #
 ########
-def main():
+def main(addresses):
   """Entry point of the program"""
   # Create the data.
-  data = create_data()
-  addresses = data['addresses']
+  data = create_data(addresses)
   API_key = data['API_key']
   time_matrix = create_time_matrix(data)
-  print(time_matrix)
+  return time_matrix
 
 if __name__ == '__main__':
   main()

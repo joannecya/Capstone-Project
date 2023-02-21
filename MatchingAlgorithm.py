@@ -39,7 +39,7 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles):
 def print_solution(data, manager, routing, solution):
     
     """Prints solution on console."""
-    print(f'Objective: {solution.ObjectiveValue()}')
+    #print(f'Objective: {solution.ObjectiveValue()}')
 
     # Display dropped nodes.
     dropped_nodes = 'Dropped nodes:'
@@ -48,11 +48,13 @@ def print_solution(data, manager, routing, solution):
             continue
         if solution.Value(routing.NextVar(node)) == node:
             dropped_nodes += ' {} (${})'.format(manager.IndexToNode(node), data['revenue_potential'][manager.IndexToNode(node)])
-    print(dropped_nodes + '\n')
+    #print(dropped_nodes + '\n')
 
     time_dimension = routing.GetDimensionOrDie('Time')
     total_time = 0
     total_load = 0
+    
+    result = {}
     for vehicle_id in range(data['num_vehicles']):
         index = routing.Start(vehicle_id)
         plan_output = 'Route for Phlebotomist {}:\n'.format(vehicle_id)
@@ -73,12 +75,17 @@ def print_solution(data, manager, routing, solution):
                                                     solution.Max(time_var))
         plan_output += 'Time of the route: {}min\n'.format(
             solution.Min(time_var))
-        print(plan_output)
+        #print(plan_output)
+        result[vehicle_id] = plan_output
         total_time += solution.Min(time_var)
         total_load += route_load
-    print('Total time of all routes: {}mins'.format(total_time))
-    print('Total load of all routes: {}'.format(total_load))
-
+    #print('Total time of all routes: {}mins'.format(total_time))
+    #print('Total load of all routes: {}'.format(total_load))
+    #total_time = 'Total time of all routes: {}mins'.format(total_time)
+    #total_load = 'Total load of all routes: {}'.format(total_load)
+    #result['Total Time'] = total_time
+    #result['Total Load'] = total_time
+    return result
 
 def run_algorithm(time_matrix, order_window, revenues, numPhleb):
     # Instantiate the data problem.
@@ -133,8 +140,8 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb):
     time = 'Time'
     routing.AddDimension(
         transit_callback_index,
-        60,  # allow waiting time
-        700,  # maximum time per vehicle
+        120,  # allow waiting time
+        1200,  # maximum time per vehicle
         False,  # Don't force start cumul to zero.
         time)
     time_dimension = routing.GetDimensionOrDie(time)
@@ -170,6 +177,6 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb):
 
     # Print solution on console.
     if solution:
-        print_solution(data, manager, routing, solution)
+        return print_solution(data, manager, routing, solution)
     else:
-        print('No Solution')
+        return 'No Solution'
