@@ -57,7 +57,7 @@ def create_time_matrix(data):
         dest_addresses_r = addresses[(q * max_rows): (q * max_rows) + r]
         response = send_request(origin_addresses, dest_addresses_r, API_key)
         for numRow  in range(len(row_time_matrix)):
-                    row_time_matrix[numRow] += build_time_matrix(response)[numRow]
+            row_time_matrix[numRow] += build_time_matrix(response)[numRow]
 
         time_matrix += row_time_matrix
         
