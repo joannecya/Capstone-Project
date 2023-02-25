@@ -33,6 +33,8 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicin
     # Take into account of servicing times
     for col_idx in range(len(servicing_times)):
         time_matrix[:, col_idx] += servicing_times[col_idx]
+    
+    data['time_matrix'] = time_matrix
 
     data['time_windows'] = time_window
     data['revenue_potential'] = revenues
