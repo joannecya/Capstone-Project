@@ -1,8 +1,9 @@
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
+import numpy as np
 
 
-def create_data_model(time_matrix, time_window, revenues, num_vehicles):
+def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times):
     """
     Purpose of this function is to store the data for the problem.
 
@@ -21,11 +22,20 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles):
             revenue is also set arbitrarily at $1. However, those values are trivial and will not affect the algorithm
     
     num_vehicles: A single digit for the number of Phlebotomists available for allocation
+
+    servicing_times: An 1-d array for each order's servicing time required. Note that from Index 0 to M phlebotomists of the array
+            trivial, so can just set any arbritrary number (e.g. 0).
     """
 
     data = {}
 
+    time_matrix = np.array(time_matrix)
+    # Take into account of servicing times
+    for col_idx in range(len(servicing_times)):
+        time_matrix[:, col_idx] += servicing_times[col_idx]
+    
     data['time_matrix'] = time_matrix
+
     data['time_windows'] = time_window
     data['revenue_potential'] = revenues
     data['num_vehicles'] = num_vehicles
@@ -34,6 +44,7 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles):
     data['ends'] = [0 for _ in range(num_vehicles)] #end location
     data['demands'] = [1 if _ > num_vehicles else 0 for _ in range(1, len(time_matrix) + 1)] 
     data['vehicle_capacities'] = [20 for _ in range(num_vehicles)]
+    data['servicing_times'] = servicing_times
     return data
 
 def print_solution(data, manager, routing, solution):
@@ -87,9 +98,9 @@ def print_solution(data, manager, routing, solution):
     #result['Total Load'] = total_time
     return result
 
-def run_algorithm(time_matrix, order_window, revenues, numPhleb):
+def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times):
     # Instantiate the data problem.
-    data = create_data_model(time_matrix, order_window, revenues, numPhleb)
+    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times)
 
     # Create the routing index manager.
     manager = pywrapcp.RoutingIndexManager(len(data['time_matrix']),
@@ -140,29 +151,33 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb):
     time = 'Time'
     routing.AddDimension(
         transit_callback_index,
-        120,  # allow waiting time
-        1200,  # maximum time per vehicle
+        60,  # allow waiting time of 60 min if needed
+        1000,  # maximum time per vehicle 
         False,  # Don't force start cumul to zero.
         time)
     time_dimension = routing.GetDimensionOrDie(time)
 
-    # Add time window constraints for each location except start positions (houses of Phebotomists).
+    # Add time window constraints for each location except depot
     for location_idx, time_window in enumerate(data['time_windows']):
-        if location_idx == 0 or location_idx == 1:
+        if location_idx == 0:
             continue
         index = manager.NodeToIndex(location_idx)
-        time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1])
+        time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1] + data['servicing_times'][index])
 
     # Add time window constraints for each vehicle start node.
-    index = routing.Start(0)
-    time_dimension.CumulVar(index).SetRange(data['time_windows'][0][0],data['time_windows'][0][1])
+    for vehicle_id in range(data["num_vehicles"]):
+        index = routing.Start(vehicle_id)
+        time_dimension.CumulVar(index).SetRange(
+            int(data["time_windows"][0][0]), int(data["time_windows"][0][1]),
+        )
 
-    # Instantiate route start and end times to produce feasible times.
-    for i in range(data['num_vehicles']):
+    for i in range(data["num_vehicles"]):
         routing.AddVariableMinimizedByFinalizer(
-            time_dimension.CumulVar(routing.Start(i)))
+            time_dimension.CumulVar(routing.Start(i))
+        )
         routing.AddVariableMinimizedByFinalizer(
-            time_dimension.CumulVar(routing.End(i)))
+            time_dimension.CumulVar(routing.End(i))
+        )
 
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
@@ -177,6 +192,6 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb):
 
     # Print solution on console.
     if solution:
-        return print_solution(data, manager, routing, solution)
+        print_solution(data, manager, routing, solution)
     else:
-        return 'No Solution'
+        print('No Solution')
