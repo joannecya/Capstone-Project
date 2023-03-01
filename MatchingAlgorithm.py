@@ -96,6 +96,7 @@ def print_solution(data, manager, routing, solution):
     #total_load = 'Total load of all routes: {}'.format(total_load)
     #result['Total Time'] = total_time
     #result['Total Load'] = total_time
+    # print(result)
     return result
 
 def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times):
@@ -192,6 +193,8 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
 
     # Print solution on console.
     if solution:
-        print_solution(data, manager, routing, solution)
+        # print_solution(data, manager, routing, solution)
+        return(print_solution(data, manager, routing, solution))
     else:
-        print('No Solution')
+        # print('No Solution')
+        return('No Solution')
