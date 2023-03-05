@@ -48,8 +48,9 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicin
     return data
 
 def print_solution(data, manager, routing, solution):
+
+    result = {}
     
-    """Prints solution on console."""
     #print(f'Objective: {solution.ObjectiveValue()}')
 
     # Display dropped nodes.
@@ -61,42 +62,39 @@ def print_solution(data, manager, routing, solution):
             dropped_nodes += ' {} (${})'.format(manager.IndexToNode(node), data['revenue_potential'][manager.IndexToNode(node)])
     #print(dropped_nodes + '\n')
 
+    # Routes
     time_dimension = routing.GetDimensionOrDie('Time')
     total_time = 0
     total_load = 0
-    
-    result = {}
     for vehicle_id in range(data['num_vehicles']):
         index = routing.Start(vehicle_id)
+        prev_index = 0
         plan_output = 'Route for Phlebotomist {}:\n'.format(vehicle_id)
         route_load = 0
+        total_transit_time = 0 
         while not routing.IsEnd(index):
             time_var = time_dimension.CumulVar(index)
+            slack_var = time_dimension.SlackVar(index)
 
             node_index = manager.IndexToNode(index)
             route_load += data['demands'][node_index]
 
-            plan_output += 'Location {0} Time({1},{2}) -> '.format(
-                manager.IndexToNode(index), solution.Min(time_var),
-                solution.Max(time_var))
+            plan_output += 'Location {0} Start({1},{2}) End({3}, {4}) -> Slack({5}, {6}) -> '.format(
+                manager.IndexToNode(index), 
+                solution.Min(time_var) - data['servicing_times'][node_index], solution.Max(time_var) - data['servicing_times'][node_index],
+                solution.Min(time_var) , solution.Max(time_var),
+                solution.Min(slack_var), solution.Max(slack_var))
+            
+            prev_index = index
             index = solution.Value(routing.NextVar(index))
-        time_var = time_dimension.CumulVar(index)
-        plan_output += 'Location {0} Time({1},{2})\n'.format(manager.IndexToNode(index),
-                                                    solution.Min(time_var),
-                                                    solution.Max(time_var))
-        plan_output += 'Time of the route: {}min\n'.format(
-            solution.Min(time_var))
-        #print(plan_output)
+      
+            total_transit_time = total_transit_time + data['time_matrix'][manager.IndexToNode(prev_index)][manager.IndexToNode(index)] - data['servicing_times'][manager.IndexToNode(index)]
+
+        total_time += total_transit_time
+        
         result[vehicle_id] = plan_output
-        total_time += solution.Min(time_var)
         total_load += route_load
-    #print('Total time of all routes: {}mins'.format(total_time))
-    #print('Total load of all routes: {}'.format(total_load))
-    #total_time = 'Total time of all routes: {}mins'.format(total_time)
-    #total_load = 'Total load of all routes: {}'.format(total_load)
-    #result['Total Time'] = total_time
-    #result['Total Load'] = total_time
-    # print(result)
+   
     return result
 
 def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times):
@@ -152,7 +150,7 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
     time = 'Time'
     routing.AddDimension(
         transit_callback_index,
-        60,  # allow waiting time of 60 min if needed
+        1000,  # maximum Slack time 
         1000,  # maximum time per vehicle 
         False,  # Don't force start cumul to zero.
         time)
@@ -163,14 +161,15 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         if location_idx == 0:
             continue
         index = manager.NodeToIndex(location_idx)
-        time_dimension.CumulVar(index).SetRange(time_window[0], time_window[1] + data['servicing_times'][index])
-
+        time_dimension.CumulVar(index).SetRange(time_window[0] + data['servicing_times'][index], time_window[1] + data['servicing_times'][index])
+        routing.AddToAssignment(time_dimension.SlackVar(index))
+        
     # Add time window constraints for each vehicle start node.
     for vehicle_id in range(data["num_vehicles"]):
         index = routing.Start(vehicle_id)
         time_dimension.CumulVar(index).SetRange(
-            int(data["time_windows"][0][0]), int(data["time_windows"][0][1]),
-        )
+            int(data["time_windows"][0][0]), int(data["time_windows"][0][1]))
+        routing.AddToAssignment(time_dimension.SlackVar(index))
 
     for i in range(data["num_vehicles"]):
         routing.AddVariableMinimizedByFinalizer(
@@ -198,3 +197,4 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
     else:
         # print('No Solution')
         return('No Solution')
+
