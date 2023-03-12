@@ -3,7 +3,7 @@ from ortools.constraint_solver import pywrapcp
 import numpy as np
 import json
 
-def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times):
+def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times, expertiseConstraints):
     """
     Purpose of this function is to store the data for the problem.
 
@@ -25,10 +25,14 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicin
 
     servicing_times: An 1-d array for each order's servicing time required. Note that from Index 0 to M phlebotomists of the array
             trivial, so can just set any arbritrary number (e.g. 0).
+
+    expertiseConstaints: An array consisting of N-Length arrays where N is the number of Vehicles/Phlebotomists 
+            with the relevant expertise required for the location at the index of the array. 
+            Format = [1 ... [0, 1 ... N] ...]
+            Note that from Index 0 to M (where M is the number of Phlebotomists), the values are trivial, so can just set any arbritrary number (e.g. 1).
     """
-
     data = {}
-
+    
     time_matrix = np.array(time_matrix)
     # Take into account of servicing times
     for col_idx in range(len(servicing_times)):
@@ -36,15 +40,21 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicin
     
     data['time_matrix'] = time_matrix
 
+    # An array of time windows for the locations, requested times for the visit that MUST be fulfilled.
     data['time_windows'] = time_window
-    data['revenue_potential'] = revenues
-    data['num_vehicles'] = num_vehicles
 
+    data['revenue_potential'] = revenues
+
+    data['num_vehicles'] = num_vehicles
     data['starts'] = [i for i in range(1, num_vehicles+1)] #start locations
     data['ends'] = [0 for _ in range(num_vehicles)] #end location
+    
     data['demands'] = [1 if _ > num_vehicles else 0 for _ in range(1, len(time_matrix) + 1)] 
     data['vehicle_capacities'] = [20 for _ in range(num_vehicles)]
     data['servicing_times'] = servicing_times
+
+    data['expertises'] = expertiseConstraints
+
     return data
 
 class npEncoder(json.JSONEncoder):
@@ -52,7 +62,7 @@ class npEncoder(json.JSONEncoder):
         if isinstance(obj, np.int32):
             return int(obj)
         return json.JSONEncoder.default(self, obj)
-    
+
 def output_jsonify(data, manager, routing, solution):
     
     output = {}
@@ -156,9 +166,9 @@ def output_jsonify(data, manager, routing, solution):
     return json.dumps(output, indent=2, cls=npEncoder)
 
 
-def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times):
+def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints):
     # Instantiate the data problem.
-    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times)
+    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints)
 
     # Create the routing index manager.
     manager = pywrapcp.RoutingIndexManager(len(data['time_matrix']),
@@ -237,6 +247,16 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         routing.AddVariableMinimizedByFinalizer(
             time_dimension.CumulVar(routing.End(i))
         )
+
+    #Add Service-Expertise Constraints
+    for location_idx, expConstraints in enumerate(data['expertises']):
+        if location_idx < numPhleb + 1:
+            continue
+
+        index = manager.NodeToIndex(location_idx)
+        vehicles = [-1]
+        vehicles.extend(expConstraints)
+        routing.VehicleVar(index).SetValues(vehicles)
 
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
