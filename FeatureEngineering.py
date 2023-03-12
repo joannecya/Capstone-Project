@@ -3,17 +3,9 @@ import json
 import urllib
 import urllib.request
 
-
-def create_data(addresses):
-  """Creates the data."""
-  data = {}
-  data['API_key'] = ''
-  data['addresses'] = addresses
-  return data
-
-def create_time_matrix(data):
-    addresses = data["addresses"]
-    API_key = data["API_key"]
+def create_time_matrix(address_list, api):
+    addresses = address_list
+    API_key = api
     # Distance Matrix API only accepts 100 elements per request, so get rows in multiple requests.
     # Maximum number of rows that can be computed per request (9 * 9 = 81).
     max_rows = 9
@@ -95,17 +87,3 @@ def build_time_matrix(response):
                     for j in range(len(row['elements']))]
         time_matrix.append(row_list)
     return time_matrix
-
-########
-# Main #
-########
-def main(addresses):
-  """Entry point of the program"""
-  # Create the data.
-  data = create_data(addresses)
-  API_key = data['API_key']
-  time_matrix = create_time_matrix(data)
-  return time_matrix
-
-if __name__ == '__main__':
-  main()
