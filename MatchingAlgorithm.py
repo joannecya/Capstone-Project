@@ -1,7 +1,7 @@
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 import numpy as np
-
+import json
 
 def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times):
     """
@@ -47,20 +47,40 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicin
     data['servicing_times'] = servicing_times
     return data
 
-def print_solution(data, manager, routing, solution):
-
-    result = {}
+class npEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.int32):
+            return int(obj)
+        return json.JSONEncoder.default(self, obj)
     
-    #print(f'Objective: {solution.ObjectiveValue()}')
+def output_jsonify(data, manager, routing, solution):
+    
+    output = {}
+    model = {}
+    routes = []
 
-    # Display dropped nodes.
-    dropped_nodes = 'Dropped nodes:'
+    model['Objective Number'] = solution.ObjectiveValue()
+    model['Status'] = routing.status()
+
+    # Dropped Nodes/Customers
+    total_revenue_lost = 0
+    total_node_drops = 0
+    dropped_nodes = []
+    dropped_revenues = []
     for node in range(routing.Size()):
         if routing.IsStart(node) or routing.IsEnd(node):
             continue
         if solution.Value(routing.NextVar(node)) == node:
-            dropped_nodes += ' {} (${})'.format(manager.IndexToNode(node), data['revenue_potential'][manager.IndexToNode(node)])
-    #print(dropped_nodes + '\n')
+            dropped_nodes.append(manager.IndexToNode(node))
+            dropped_revenues.append(data['revenue_potential'][manager.IndexToNode(node)])
+            total_revenue_lost += data['revenue_potential'][manager.IndexToNode(node)]
+            total_node_drops += 1
+    
+    model['Total Revenue Lost'] = total_revenue_lost
+    model["Total Number of Nodes Dropped"] = total_node_drops
+    model["Nodes Dropped"] = dropped_nodes
+    model["Revenues Dropped"] = dropped_revenues
+    
 
     # Routes
     time_dimension = routing.GetDimensionOrDie('Time')
@@ -69,7 +89,16 @@ def print_solution(data, manager, routing, solution):
     for vehicle_id in range(data['num_vehicles']):
         index = routing.Start(vehicle_id)
         prev_index = 0
+
+        phleb_route = {}
+        route_locations = []
+        route_startTimes =[]
+        route_endTimes = []
+        route_slackTimes = []
+        phleb_route['Phlebotomist Index'] = vehicle_id
+
         plan_output = 'Route for Phlebotomist {}:\n'.format(vehicle_id)
+
         route_load = 0
         total_transit_time = 0 
         while not routing.IsEnd(index):
@@ -85,17 +114,47 @@ def print_solution(data, manager, routing, solution):
                 solution.Min(time_var) , solution.Max(time_var),
                 solution.Min(slack_var), solution.Max(slack_var))
             
+            route_locations.append(manager.IndexToNode(index))
+            route_startTimes.append((solution.Min(time_var) - data['servicing_times'][node_index], solution.Max(time_var) - data['servicing_times'][node_index]))
+            route_endTimes.append((solution.Min(time_var) , solution.Max(time_var)))
+            route_slackTimes.append((solution.Min(slack_var), solution.Max(slack_var)))
+            
             prev_index = index
             index = solution.Value(routing.NextVar(index))
       
             total_transit_time = total_transit_time + data['time_matrix'][manager.IndexToNode(prev_index)][manager.IndexToNode(index)] - data['servicing_times'][manager.IndexToNode(index)]
 
         total_time += total_transit_time
+        time_var = time_dimension.CumulVar(index)
+
+        plan_output += 'Location {0} Time({1},{2})\n'.format(manager.IndexToNode(index),
+                                                    solution.Min(time_var),
+                                                    solution.Max(time_var))
         
-        result[vehicle_id] = plan_output
+        route_locations.append(manager.IndexToNode(index))
+        route_startTimes.append((solution.Min(time_var),  solution.Max(time_var)))
+        route_endTimes.append((solution.Min(time_var) , solution.Max(time_var)))
+
+        phleb_route['Printable Route'] = plan_output
+        phleb_route['Total Travel Time'] = total_transit_time
+        phleb_route['Total Loads'] = route_load
+        phleb_route['Locations Sequence'] = route_locations
+        phleb_route['Start Times Sequence'] = route_startTimes
+        phleb_route['End Times Sequence'] = route_endTimes
+        phleb_route['Slack Times Sequence'] = route_slackTimes
+
+        routes.append(phleb_route)
+
         total_load += route_load
-   
-    return result
+    
+    model['Total Travel Time'] = total_time
+    model['Total Loads'] = total_load
+
+    output['Model'] = model
+    output['Routes'] = routes
+
+    return json.dumps(output, indent=2, cls=npEncoder)
+
 
 def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times):
     # Instantiate the data problem.
@@ -163,7 +222,7 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         index = manager.NodeToIndex(location_idx)
         time_dimension.CumulVar(index).SetRange(time_window[0] + data['servicing_times'][index], time_window[1] + data['servicing_times'][index])
         routing.AddToAssignment(time_dimension.SlackVar(index))
-        
+
     # Add time window constraints for each vehicle start node.
     for vehicle_id in range(data["num_vehicles"]):
         index = routing.Start(vehicle_id)
@@ -192,9 +251,7 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
 
     # Print solution on console.
     if solution:
-        # print_solution(data, manager, routing, solution)
-        return(print_solution(data, manager, routing, solution))
+        return output_jsonify(data, manager, routing, solution)
     else:
-        # print('No Solution')
-        return('No Solution')
+        return 'Routing Status: ' + routing.status
 
