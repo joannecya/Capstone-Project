@@ -3,7 +3,7 @@ from ortools.constraint_solver import pywrapcp
 import numpy as np
 import json
 
-def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times, expertiseConstraints, metadata):
+def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times, inverse_ratings, expertiseConstraints, metadata):
     """
     Purpose of this function is to store the data for the problem.
 
@@ -34,6 +34,8 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicin
     data = {}
 
     data['metadata'] = metadata
+
+    data['inverse_ratings'] = inverse_ratings
     
     time_matrix = np.array(time_matrix)
     # Take into account of servicing times
@@ -171,9 +173,9 @@ def output_jsonify(data, manager, routing, solution):
     return json.dumps(output, indent=2, cls=npEncoder)
 
 
-def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints, metadata):
+def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints, inverse_ratings, metadata):
     # Instantiate the data problem.
-    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints, metadata)
+    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints, inverse_ratings, metadata)
 
     # Create the routing index manager.
     manager = pywrapcp.RoutingIndexManager(len(data['time_matrix']),
@@ -184,7 +186,6 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
 
     # Create Routing Model.
     routing = pywrapcp.RoutingModel(manager)
-
 
     # Create and register a transit callback.
     def time_callback(from_index, to_index):
@@ -262,6 +263,10 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         vehicles = [-1]
         vehicles.extend(expConstraints)
         routing.VehicleVar(index).SetValues(vehicles)
+    
+    #Add preference to phlebotomists with better service quality
+    for vehicle_id in range(data["num_vehicles"]):
+        routing.SetFixedCostOfVehicle(data['inverse_ratings'][vehicle_id], vehicle_id)
 
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
@@ -269,7 +274,7 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)
-    search_parameters.time_limit.seconds = 30
+    search_parameters.time_limit.seconds = 45
 
     # Solve the problem.
     solution = routing.SolveWithParameters(search_parameters)
