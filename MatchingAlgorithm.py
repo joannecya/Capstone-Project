@@ -3,7 +3,7 @@ from ortools.constraint_solver import pywrapcp
 import numpy as np
 import json
 
-def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times, expertiseConstraints):
+def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times, expertiseConstraints, metadata):
     """
     Purpose of this function is to store the data for the problem.
 
@@ -32,6 +32,8 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicin
             Note that from Index 0 to M (where M is the number of Phlebotomists), the values are trivial, so can just set any arbritrary number (e.g. 1).
     """
     data = {}
+
+    data['metadata'] = metadata
     
     time_matrix = np.array(time_matrix)
     # Take into account of servicing times
@@ -66,6 +68,9 @@ class npEncoder(json.JSONEncoder):
 def output_jsonify(data, manager, routing, solution):
     
     output = {}
+    metadata = data['metadata']
+    output['Metadata'] = metadata
+
     model = {}
     routes = []
 
@@ -166,9 +171,9 @@ def output_jsonify(data, manager, routing, solution):
     return json.dumps(output, indent=2, cls=npEncoder)
 
 
-def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints):
+def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints, metadata):
     # Instantiate the data problem.
-    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints)
+    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints, metadata)
 
     # Create the routing index manager.
     manager = pywrapcp.RoutingIndexManager(len(data['time_matrix']),
