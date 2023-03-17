@@ -3,7 +3,7 @@ from ortools.constraint_solver import pywrapcp
 import numpy as np
 import json
 
-def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times, expertiseConstraints):
+def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicing_times, inverse_ratings, expertiseConstraints, metadata):
     """
     Purpose of this function is to store the data for the problem.
 
@@ -32,18 +32,22 @@ def create_data_model(time_matrix, time_window, revenues, num_vehicles, servicin
             Note that from Index 0 to M (where M is the number of Phlebotomists), the values are trivial, so can just set any arbritrary number (e.g. 1).
     """
     data = {}
+
+    data['metadata'] = metadata
+
+    data['inverse_ratings'] = inverse_ratings
+
+    #Important! To ensure Revenue Lost is larger than overall transit time
+    data['revenue_potential'] = [revenue * sum(time_matrix[0]) for revenue in revenues] 
     
-    time_matrix = np.array(time_matrix)
+    time_matrix_np = np.array(time_matrix)
     # Take into account of servicing times
     for col_idx in range(len(servicing_times)):
-        time_matrix[:, col_idx] += servicing_times[col_idx]
+        time_matrix_np[:, col_idx] += servicing_times[col_idx]
     
-    data['time_matrix'] = time_matrix
+    data['time_matrix'] = time_matrix_np
 
-    # An array of time windows for the locations, requested times for the visit that MUST be fulfilled.
     data['time_windows'] = time_window
-
-    data['revenue_potential'] = revenues
 
     data['num_vehicles'] = num_vehicles
     data['starts'] = [i for i in range(1, num_vehicles+1)] #start locations
@@ -66,6 +70,9 @@ class npEncoder(json.JSONEncoder):
 def output_jsonify(data, manager, routing, solution):
     
     output = {}
+    metadata = data['metadata']
+    output['Metadata'] = metadata
+
     model = {}
     routes = []
 
@@ -82,8 +89,8 @@ def output_jsonify(data, manager, routing, solution):
             continue
         if solution.Value(routing.NextVar(node)) == node:
             dropped_nodes.append(manager.IndexToNode(node))
-            dropped_revenues.append(data['revenue_potential'][manager.IndexToNode(node)])
-            total_revenue_lost += data['revenue_potential'][manager.IndexToNode(node)]
+            dropped_revenues.append(data['revenue_potential'][manager.IndexToNode(node)] / sum(data['time_matrix'][0]))  #Get back the actual Revenue Lost
+            total_revenue_lost += data['revenue_potential'][manager.IndexToNode(node)] / sum(data['time_matrix'][0])
             total_node_drops += 1
     
     model['Total Revenue Lost'] = total_revenue_lost
@@ -166,9 +173,9 @@ def output_jsonify(data, manager, routing, solution):
     return json.dumps(output, indent=2, cls=npEncoder)
 
 
-def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints):
+def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints, inverse_ratings, metadata):
     # Instantiate the data problem.
-    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints)
+    data = create_data_model(time_matrix, order_window, revenues, numPhleb, servicing_times, expertiseConstraints, inverse_ratings, metadata)
 
     # Create the routing index manager.
     manager = pywrapcp.RoutingIndexManager(len(data['time_matrix']),
@@ -179,7 +186,6 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
 
     # Create Routing Model.
     routing = pywrapcp.RoutingModel(manager)
-
 
     # Create and register a transit callback.
     def time_callback(from_index, to_index):
@@ -210,17 +216,12 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         True,  # start cumul to zero
         'Capacity')
 
-    # Allow to drop nodes.
-    for node in range(1, len(data['time_matrix'])):
-        penalty = data['revenue_potential'][manager.NodeToIndex(node)]
-        routing.AddDisjunction([manager.NodeToIndex(node)], penalty)
-
     # Add Time Windows constraint.
     time = 'Time'
     routing.AddDimension(
         transit_callback_index,
-        1000,  # maximum Slack time 
-        1000,  # maximum time per vehicle 
+        10000,  # arbitratrily large maximum Slack time 
+        10000,  # arbitratrily maximum time per vehicle 
         False,  # Don't force start cumul to zero.
         time)
     time_dimension = routing.GetDimensionOrDie(time)
@@ -239,6 +240,11 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         time_dimension.CumulVar(index).SetRange(
             int(data["time_windows"][0][0]), int(data["time_windows"][0][1]))
         routing.AddToAssignment(time_dimension.SlackVar(index))
+    
+    # Allow to drop nodes.
+    for node in range(numPhleb + 1, len(data['time_matrix'])): #Starting Location should be omitted
+        penalty = data['revenue_potential'][node]
+        routing.AddDisjunction([manager.NodeToIndex(node)], penalty)
 
     for i in range(data["num_vehicles"]):
         routing.AddVariableMinimizedByFinalizer(
@@ -257,6 +263,10 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         vehicles = [-1]
         vehicles.extend(expConstraints)
         routing.VehicleVar(index).SetValues(vehicles)
+    
+    #Add preference to phlebotomists with better service quality
+    for vehicle_id in range(data["num_vehicles"]):
+        routing.SetFixedCostOfVehicle(data['inverse_ratings'][vehicle_id], vehicle_id)
 
     # Setting first solution heuristic.
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
@@ -264,7 +274,8 @@ def run_algorithm(time_matrix, order_window, revenues, numPhleb, servicing_times
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)
-    search_parameters.time_limit.seconds = 30
+    search_parameters.time_limit.seconds = 10
+    search_parameters.log_search = True
 
     # Solve the problem.
     solution = routing.SolveWithParameters(search_parameters)
