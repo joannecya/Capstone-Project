@@ -1,4 +1,7 @@
 import json
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
 import geopandas as gpd
 from shapely.geometry import Point, LineString
@@ -19,6 +22,13 @@ def to_time(time_window):
     
     return(f"{start[0]:02d}:{start[1]:02d}  - {end[0]:02d}:{end[1]:02d}")
 
+def create_popup(text):
+    iframe = folium.IFrame(text)
+    popup = folium.Popup(iframe,
+                        min_width=300,
+                        max_width=300)
+    return popup
+
 
 def visualise_routes(json_result, polygon, addresses_list):
     """
@@ -29,21 +39,46 @@ def visualise_routes(json_result, polygon, addresses_list):
         polygon: geojson polygon provided by TATA
         addressess_list: list of addressess compiled - refer to Run Algorithm.ipynb 
     """
-    x_min, y_min, x_max, y_max = polygon.total_bounds
     # create base graph
+    x_min, y_min, x_max, y_max = polygon.total_bounds
     G = ox.graph_from_bbox(north=y_max, south=y_min, east=x_max, west=x_min, network_type='drive')
 
-    for phleb in json_result['Routes']:
+    # colour and opacity of routes and markers
+    colours = [
+        'blue',
+        'gray',
+        'orange',
+        'beige',
+        'darkblue',
+        'lightblue',
+        'purple',
+        'darkpurple',
+        'pink',
+        'cadetblue',
+        'lightgray',
+        'black'
+    ]
+    alpha = 0.5
+
+    # catchment area 
+    catchment_popup_text = "Catchment Area"
+    catchment_coords = addresses_list[0].split(',')
+    catchment_lat, catchment_long = float(catchment_coords[0]), float(catchment_coords[1])
+
+    for j in range(len(json_result['Routes'])):
+        phleb = json_result['Routes'][j]
         phleb_id = phleb['Phlebotomist Index']
         print(f"Creating route travelled by Phlebotomist ID #{phleb_id}")
 
         locations_sequence = phleb['Locations Sequence']
         print(locations_sequence)
-
         last_order_index = len(locations_sequence) - 2
 
         start_times = phleb['Start Times Sequence']
         end_times = phleb['End Times Sequence']
+
+        colour = colours[j]
+        print(colour)
 
         for i in range(len(locations_sequence)-1):
             start = addresses_list[locations_sequence[i]].split(',')
@@ -59,43 +94,50 @@ def visualise_routes(json_result, polygon, addresses_list):
             arrival_time = f"Arrival:{to_time(start_times[i])}"
             departure_time = f"Departure:{to_time(end_times[i])}"
 
+            location_number = locations_sequence[i]
+            order_id = json_result['Metadata']['Locations'][location_number]['Order Id']
+
             if i == 0:
-                # create route map
+                # phlebotomist home
                 print(f"Map created for Phlebotomist ID #{phleb_id}'s route")
-                route_map = ox.plot_route_folium(G, route, route_linewidth=6, node_size=0)
+                if j == 0:
+                    route_map = ox.plot_route_folium(G, route, route_linewidth=6, node_size=0, color=colour, opacity=alpha)
+                else: 
+                    route_map = ox.plot_route_folium(G, route, route_linewidth=6, node_size=0, route_map=route_map, color=colour, opacity=alpha)
                 # create markers
                 start_marker = folium.Marker(
                     location=(start_lat, start_long), # only accepts coords in tuple form
-                    popup=f"Home<br>{departure_time}",
-                    icon = folium.Icon(color='green')
+                    popup=create_popup(f"Phlebotomist #{phleb_id} Home<br>{departure_time}"),
+                    icon = folium.Icon(color='green', icon='house', prefix='fa')
                 )
                 start_marker.add_to(route_map)
             else:
                 # if map has been created, add onto route map
-                route_map = ox.plot_route_folium(G, route, route_linewidth=6, node_size=0, route_map=route_map)
+                route_map = ox.plot_route_folium(G, route, route_linewidth=6, node_size=0, route_map=route_map, color=colour, opacity=alpha)
                 start_marker = folium.Marker(
                     location=(start_lat, start_long), # only accepts coords in tuple form
-                    popup=f'Order #<br>{arrival_time}<br>{departure_time}',
-                    icon = folium.Icon(color='blue')
+                    popup=create_popup(f'Order #{order_id}<br>{arrival_time}<br>{departure_time}'),
+                    icon = folium.Icon(color=colour, icon='user', prefix='fa')
                 )
                 start_marker.add_to(route_map)
 
-                # only plot end node if it is the last order
                 if i == last_order_index:
-                    end_marker = folium.Marker(
-                    location=(end_lat, end_long), # only accepts coords in tuple form
-                    popup=f'Catchment area<br>{arrival_time}',
-                    icon = folium.Icon(color='red')
-                    )
-                    end_marker.add_to(route_map)
+                    catchment_popup_text += f"<br>Phlebotomist #{phleb_id} Arrival:{to_time(start_times[i+1])}"
                     print(f"Last order for Phlebotomist ID #{phleb_id} fulfilled")
                     # save map at the end of last order
                     print(f"Route travelled by Phlebotomist ID #{phleb_id} saved")
-                    route_map.save(f"Route Visualisations/Route_{phleb_id}.html")
+            
+    catchment_marker = folium.Marker(
+                    location=(catchment_lat, catchment_long), # only accepts coords in tuple form
+                    popup=create_popup(f'{catchment_popup_text}'),
+                    icon = folium.Icon(color='red', icon='vial', prefix='fa')
+                )
+    catchment_marker.add_to(route_map)
+    route_map.save(f"Route Visualisations/Route.html")
    
 # for testing purposes
 if __name__ == "__main__":
-    with open("matching.json", "r") as read_file:
+    with open("Route Visualisations/matching.json", "r") as read_file:
         json_result = json.load(read_file)
     json_result = json.loads(json_result)
 
@@ -105,3 +147,7 @@ if __name__ == "__main__":
     
     visualise_routes(json_result, polygon, addresses_list)
 
+def create_grid_df(size, ):
+    grid = pd.DataFrame()
+    grid['x'] = np.repeat(np.arange(0, size), size)
+    grid['y'] = np.tile(np.arange(0, size), size)
