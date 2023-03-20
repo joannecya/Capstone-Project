@@ -22,7 +22,7 @@ from firebase_admin import firestore
 import pyrebase
 
 config = {
-    "apiKey": "", #firebase API key
+    "apiKey": "", # Firebase API key
     "authDomain": "bt4103-capstone-e15b0.firebaseapp.com",
     "projectId": "bt4103-capstone-e15b0",
     "storageBucket": "bt4103-capstone-e15b0.appspot.com",
