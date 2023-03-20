@@ -7,7 +7,7 @@ import urllib.request
 def create_data(addresses):
   """Creates the data."""
   data = {}
-  data['API_key'] = ''
+  data['API_key'] = 'AIzaSyAZ8QJJ2hJm6Dv5aZsj1s8-MEHT759m_74'
   data['addresses'] = addresses
   return data
 
